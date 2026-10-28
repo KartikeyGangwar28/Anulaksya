@@ -1,12 +1,15 @@
 import re
 import json
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from datetime import datetime
 from collections import defaultdict
+import streamlit as st
 
-# ==========================================
-# 1. REFERENCE DATA & KNOWLEDGE BASE
-# ==========================================
+# Set page configuration
+st.set_page_config(
+    page_title="Anulaksya - AutoPay Tracker",
+    page_icon="💳",
+    layout="wide"
+)
 
 # Reference dataset for merchant string interpretation
 MERCHANT_KNOWLEDGE_BASE = [
@@ -71,7 +74,7 @@ MERCHANT_KNOWLEDGE_BASE = [
         ]
     },
     {
-        "pattern": r"(?i)( культ|CULT\.|CULTFIT|CUREFIT)",
+        "pattern": r"(?i)(CULT\.|CULTFIT|CUREFIT)",
         "clean_name": "Cult.fit Pass",
         "category": "Fitness & Health",
         "logo_icon": "fa-solid fa-dumbbell",
@@ -81,62 +84,34 @@ MERCHANT_KNOWLEDGE_BASE = [
             "Select Membership > Cancel Auto-Renewal",
             "If non-responsive, submit eNACH mandate cancellation at issuing bank"
         ]
-    },
-    {
-        "pattern": r"(?i)(RAZORPAY\*|RZP\*)(?P<submerchant>[A-Z0-9_]+)",
-        "clean_name": "Razorpay Sub-Merchant",
-        "category": "SaaS / Digital Service",
-        "logo_icon": "fa-solid fa-credit-card",
-        "rail_type": "Razorpay Sub-Mandate",
-        "cancellation_steps": [
-            "Visit razorpay.com/support or check email receipt for mandate link",
-            "Access Razorpay Subscriptions Dashboard",
-            "Cancel recurring authorization via OTP"
-        ]
     }
 ]
 
-# ==========================================
-# 2. PATTERN REASONING & DISCOVERY ENGINE
-# ==========================================
-
 class RecurringPaymentAnalyzer:
-    def __init__(self, knowledge_base: List[Dict]):
+    def __init__(self, knowledge_base):
         self.kb = knowledge_base
 
-    def normalize_merchant(self, raw_descriptor: str) -> Dict[str, str]:
-        """Maps compressed bank string to recognizable merchant identity."""
+    def normalize_merchant(self, raw_descriptor):
         for entry in self.kb:
             match = re.search(entry["pattern"], raw_descriptor)
             if match:
-                clean_name = entry["clean_name"]
-                if "submerchant" in match.groupdict() and match.group("submerchant"):
-                    clean_name += f" ({match.group('submerchant')})"
                 return {
-                    "clean_name": clean_name,
+                    "clean_name": entry["clean_name"],
                     "category": entry["category"],
-                    "logo_icon": entry["logo_icon"],
                     "rail_type": entry["rail_type"],
                     "cancellation_steps": entry["cancellation_steps"]
                 }
         return {
             "clean_name": raw_descriptor.strip(),
             "category": "Uncategorized Subscription",
-            "logo_icon": "fa-solid fa-receipt",
             "rail_type": "Unknown Mandate Rail",
             "cancellation_steps": [
-                "Identify execution bank from statement",
                 "Log into NetBanking > eMandate / Autopay Section",
-                "Issue explicit mandate revocation request to bank grievance cell"
+                "Issue explicit mandate revocation request"
             ]
         }
 
-    def analyze_transactions(self, raw_transactions: List[Dict]) -> Dict[str, Any]:
-        """
-        Processes transaction history to find fixed, irregular, variable,
-        and price-increased recurring debits.
-        """
-        # Group by normalized merchant
+    def analyze_transactions(self, raw_transactions):
         grouped = defaultdict(list)
         for tx in raw_transactions:
             norm = self.normalize_merchant(tx["descriptor"])
@@ -149,13 +124,10 @@ class RecurringPaymentAnalyzer:
 
         for merchant, txs in grouped.items():
             if len(txs) < 2:
-                # Check for single high-value annual or trial charge flagged
                 continue
 
-            # Sort chronologically
             txs.sort(key=lambda x: x["date_obj"])
 
-            # Compute intervals and price dynamics
             intervals = []
             price_changes = []
             for i in range(1, len(txs)):
@@ -172,12 +144,6 @@ class RecurringPaymentAnalyzer:
 
             avg_interval = sum(intervals) / len(intervals) if intervals else 0
             latest_tx = txs[-1]
-            earliest_tx = txs[0]
-
-            # Determine Commitment Type
-            commitment_type = "Fixed Monthly"
-            confidence = "High"
-            is_irregular = False
 
             if 25 <= avg_interval <= 35:
                 commitment_type = "Monthly Recurring"
@@ -185,19 +151,9 @@ class RecurringPaymentAnalyzer:
             elif 350 <= avg_interval <= 380:
                 commitment_type = "Annual Auto-Renewal"
                 annualized_cost = latest_tx["amount"]
-                is_irregular = True
-            elif 80 <= avg_interval <= 100:
-                commitment_type = "Quarterly Recurring"
-                annualized_cost = latest_tx["amount"] * 4
-                is_irregular = True
             else:
-                commitment_type = "Irregular / Variable Interval"
+                commitment_type = "Irregular Interval"
                 annualized_cost = latest_tx["amount"] * (365 / max(avg_interval, 1))
-                is_irregular = True
-
-            # Price Hike / Trial conversion check
-            has_price_hike = len(price_changes) > 0
-            is_trial_converted = (earliest_tx["amount"] == 0 or earliest_tx["amount"] < 10) and latest_tx["amount"] > 100
 
             total_annual_leak += annualized_cost
 
@@ -205,17 +161,13 @@ class RecurringPaymentAnalyzer:
                 "merchant": merchant,
                 "category": latest_tx["category"],
                 "rail_type": latest_tx["rail_type"],
-                "logo_icon": latest_tx["logo_icon"],
                 "last_debit_date": latest_tx["date"],
                 "latest_amount": latest_tx["amount"],
                 "annualized_impact": round(annualized_cost, 2),
                 "frequency": commitment_type,
-                "is_irregular": is_irregular,
-                "has_price_hike": has_price_hike,
-                "price_hike_details": price_changes if has_price_hike else None,
-                "is_trial_converted": is_trial_converted,
-                "cancellation_steps": latest_tx["cancellation_steps"],
-                "history_count": len(txs)
+                "has_price_hike": len(price_changes) > 0,
+                "price_hike_details": price_changes,
+                "cancellation_steps": latest_tx["cancellation_steps"]
             })
 
         return {
@@ -224,33 +176,54 @@ class RecurringPaymentAnalyzer:
             "commitments": commitments
         }
 
-# ==========================================
-# 3. DEMONSTRATION & SYNTHETIC DATASETS
-# ==========================================
-
 SYNTHETIC_BANK_STATEMENT = [
     {"date": "2025-10-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2025-11-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2025-12-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2026-01-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
-    {"date": "2026-02-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 799.0}, # Price Hike!
+    {"date": "2026-02-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 799.0},
     
     {"date": "2025-11-01", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0},
-    {"date": "2026-10-30", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0}, # Annual Auto-Debit
+    {"date": "2026-10-30", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0},
     
     {"date": "2025-08-10", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
     {"date": "2025-11-12", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
-    {"date": "2026-02-14", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0}, # Quarterly / Irregular
+    {"date": "2026-02-14", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
     
     {"date": "2026-01-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 420.0},
-    {"date": "2026-02-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 1280.0} # Variable Usage
+    {"date": "2026-02-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 1280.0}
 ]
 
-if __name__ == "__main__":
-    analyzer = RecurringPaymentAnalyzer(MERCHANT_KNOWLEDGE_BASE)
-    report = analyzer.analyze_transactions(SYNTHETIC_BANK_STATEMENT)
-    print("=== THE AUTO-DEBIT INTELLIGENCE ENGINE ===")
-    print(f"Total Annual Financial Leak: ₹{report['total_annual_leak']:,.2f}")
-    print(f"Total Commitments Identified: {report['total_commitments_found']}")
-    print("\nDetailed Commitment Breakdown:")
-    print(json.dumps(report["commitments"], indent=2))
+# --- STREAMLIT UI RENDER ---
+st.title("💳 Anulaksya — Recurring Debit Intelligence")
+st.caption("Unveiling forgotten auto-debits, silent price hikes, and cancellation pathways.")
+
+analyzer = RecurringPaymentAnalyzer(MERCHANT_KNOWLEDGE_BASE)
+report = analyzer.analyze_transactions(SYNTHETIC_BANK_STATEMENT)
+
+# Metrics Banner
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Annual Financial Leak", f"₹{report['total_annual_leak']:,.2f}")
+col2.metric("Detected Subscriptions", report['total_commitments_found'])
+hikes_count = sum(1 for c in report['commitments'] if c['has_price_hike'])
+col3.metric("Price Hikes Detected", hikes_count, delta=f"{hikes_count} Alert" if hikes_count else None, delta_color="inverse")
+
+st.markdown("---")
+st.subheader("Active Mandates & Cancellation Guidance")
+
+for item in report["commitments"]:
+    with st.expander(f"{item['merchant']} — ₹{item['latest_amount']} ({item['frequency']})"):
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            st.write(f"**Category:** {item['category']}")
+            st.write(f"**Payment Rail:** {item['rail_type']}")
+            st.write(f"**Last Debited:** {item['last_debit_date']}")
+            st.write(f"**Annualized Cost:** ₹{item['annualized_impact']:,.2f}")
+            if item['has_price_hike']:
+                st.warning("⚠️ **Silent Price Hike Detected!**")
+                for hike in item['price_hike_details']:
+                    st.write(f"- Increased from ₹{hike['old_amount']} to ₹{hike['new_amount']} (+{hike['increase_pct']}%) on {hike['date']}")
+        with c2:
+            st.markdown("### 🛑 Cancellation Steps")
+            for step in item['cancellation_steps']:
+                st.write(f"- {step}")
