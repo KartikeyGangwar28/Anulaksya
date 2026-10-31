@@ -2,14 +2,18 @@ import re
 import json
 from datetime import datetime
 from collections import defaultdict
+from PIL import Image
 import streamlit as st
-
+logo_image = Image.open("assets/images/anulakshyalog.jpg")
 # Set page layout
 st.set_page_config(
     page_title="Anulaksya — Third-Party Account Aggregator",
-    page_icon="💳",
+    page_icon=logo_image,
     layout="wide"
 )
+st.sidebar.image(logo_image, width=200)
+
+st.title("💳 Anulaksya — Third-Party Account Aggregator")
 
 # =========================================================
 # 1. THIRD-PARTY ACCOUNT CONNECTORS
