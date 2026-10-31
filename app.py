@@ -7,13 +7,13 @@ import streamlit as st
 logo_image = Image.open("assets/images/anulakshyalog.jpg")
 # Set page layout
 st.set_page_config(
-    page_title="Anulaksya — Third-Party Account Aggregator",
+    page_title="Anulaksya",
     page_icon=logo_image,
     layout="wide"
 )
 st.sidebar.image(logo_image, width=200)
 
-st.title("💳 Anulaksya — Third-Party Account Aggregator")
+# st.title("💳 Anulaksya — Third-Party Account Aggregator")
 
 # =========================================================
 # 1. THIRD-PARTY ACCOUNT CONNECTORS
