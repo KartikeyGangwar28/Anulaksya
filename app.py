@@ -4,226 +4,183 @@ from datetime import datetime
 from collections import defaultdict
 import streamlit as st
 
-# Set page configuration
+# Set page layout
 st.set_page_config(
-    page_title="Anulaksya - AutoPay Tracker",
+    page_title="Anulaksya — Third-Party Account Aggregator",
     page_icon="💳",
     layout="wide"
 )
 
-# Reference dataset for merchant string interpretation
-MERCHANT_KNOWLEDGE_BASE = [
-    {
-        "pattern": r"(?i)(AMZN|AMAZON|PRIME\s*MEMBER)",
-        "clean_name": "Amazon Prime",
-        "category": "Entertainment & Shopping",
-        "logo_icon": "fa-brands fa-amazon",
-        "rail_type": "UPI AutoPay / Card SI",
-        "cancellation_steps": [
-            "Open Amazon App > Account > Prime Membership",
-            "Select 'Manage Membership' > End Membership",
-            "Confirm cancellation; benefits continue till end of cycle."
-        ]
-    },
-    {
-        "pattern": r"(?i)(NFLX|NETFLIX)",
-        "clean_name": "Netflix India",
-        "category": "OTT Streaming",
-        "logo_icon": "fa-solid fa-tv",
-        "rail_type": "Card Standing Instruction",
-        "cancellation_steps": [
-            "Log into Netflix.com via browser",
-            "Go to Account > Membership & Billing",
-            "Click 'Cancel Membership' and confirm"
-        ]
-    },
-    {
-        "pattern": r"(?i)(SPOTIFY|SPTF)",
-        "clean_name": "Spotify Premium",
-        "category": "Audio Streaming",
-        "logo_icon": "fa-brands fa-spotify",
-        "rail_type": "UPI AutoPay",
-        "cancellation_steps": [
-            "Open UPI App (GPay/PhonePe/Paytm) > Autopay Settings",
-            "Locate 'Spotify India' mandate",
-            "Click 'Pause Mandate' or 'Revoke Mandate' and enter UPI PIN"
-        ]
-    },
-    {
-        "pattern": r"(?i)(AWS|AMAZON\s*WEB\s*SERVICES)",
-        "clean_name": "AWS Cloud Hosting",
-        "category": "Developer Infrastructure",
-        "logo_icon": "fa-solid fa-cloud",
-        "rail_type": "Credit Card SI",
-        "cancellation_steps": [
-            "Log into AWS Management Console > Billing Dashboard",
-            "Terminate active EC2/S3 resources to halt meter",
-            "Close AWS Account under Account Settings"
-        ]
-    },
-    {
-        "pattern": r"(?i)(SWIGGY|ONE\s*SUPER|SWIGGYONE)",
-        "clean_name": "Swiggy One Membership",
-        "category": "Food & Delivery",
-        "logo_icon": "fa-solid fa-utensils",
-        "rail_type": "UPI AutoPay",
-        "cancellation_steps": [
-            "Open Swiggy App > Account > Swiggy One Membership",
-            "Disable Auto-Renewal under Membership Settings",
-            "Or revoke UPI Mandate directly in UPI payment app"
-        ]
-    },
-    {
-        "pattern": r"(?i)(CULT\.|CULTFIT|CUREFIT)",
-        "clean_name": "Cult.fit Pass",
-        "category": "Fitness & Health",
-        "logo_icon": "fa-solid fa-dumbbell",
-        "rail_type": "eNACH / UPI Mandate",
-        "cancellation_steps": [
-            "Open Cult.fit App > Profile > Active Subscriptions",
-            "Select Membership > Cancel Auto-Renewal",
-            "If non-responsive, submit eNACH mandate cancellation at issuing bank"
-        ]
-    }
-]
+# =========================================================
+# 1. THIRD-PARTY ACCOUNT CONNECTORS
+# =========================================================
 
-class RecurringPaymentAnalyzer:
-    def __init__(self, knowledge_base):
-        self.kb = knowledge_base
+class AccountConnector:
+    def __init__(self, platform_name: str, auth_type: str):
+        self.platform_name = platform_name
+        self.auth_type = auth_type
 
-    def normalize_merchant(self, raw_descriptor):
-        for entry in self.kb:
-            match = re.search(entry["pattern"], raw_descriptor)
-            if match:
-                return {
-                    "clean_name": entry["clean_name"],
-                    "category": entry["category"],
-                    "rail_type": entry["rail_type"],
-                    "cancellation_steps": entry["cancellation_steps"]
-                }
+    def fetch_subscription_metadata(self, account_id: str):
+        raise NotImplementedError
+
+class SpotifyConnector(AccountConnector):
+    def __init__(self):
+        super().__init__("Spotify", "OAuth2")
+
+    def fetch_subscription_metadata(self, account_id: str):
         return {
-            "clean_name": raw_descriptor.strip(),
-            "category": "Uncategorized Subscription",
-            "rail_type": "Unknown Mandate Rail",
-            "cancellation_steps": [
-                "Log into NetBanking > eMandate / Autopay Section",
-                "Issue explicit mandate revocation request"
-            ]
+            "account_id": account_id,
+            "platform": "Spotify Premium",
+            "plan_name": "Premium Family",
+            "amount": 179.0,
+            "currency": "INR",
+            "billing_cycle": "Monthly",
+            "next_billing_date": "2026-11-15",
+            "last_used_date": "2026-10-30",
+            "is_usage_active": True,
+            "revoke_endpoint": "https://www.spotify.com/account/apps/",
+            "payment_rail": "UPI AutoPay (GPay)"
         }
 
-    def analyze_transactions(self, raw_transactions):
-        grouped = defaultdict(list)
-        for tx in raw_transactions:
-            norm = self.normalize_merchant(tx["descriptor"])
-            tx_data = {**tx, **norm}
-            tx_data["date_obj"] = datetime.strptime(tx["date"], "%Y-%m-%d")
-            grouped[norm["clean_name"]].append(tx_data)
+class OpenAIConnector(AccountConnector):
+    def __init__(self):
+        super().__init__("OpenAI", "API_Key")
 
-        commitments = []
+    def fetch_subscription_metadata(self, account_id: str):
+        return {
+            "account_id": account_id,
+            "platform": "OpenAI / ChatGPT",
+            "plan_name": "ChatGPT Plus",
+            "amount": 1650.0,
+            "currency": "INR",
+            "billing_cycle": "Monthly",
+            "next_billing_date": "2026-11-08",
+            "last_used_date": "2026-09-12", # Inactive for 45+ days
+            "is_usage_active": False,
+            "revoke_endpoint": "https://platform.openai.com/account/billing/overview",
+            "payment_rail": "Credit Card Standing Instruction"
+        }
+
+class AmazonConnector(AccountConnector):
+    def __init__(self):
+        super().__init__("Amazon India", "OAuth2")
+
+    def fetch_subscription_metadata(self, account_id: str):
+        return {
+            "account_id": account_id,
+            "platform": "Amazon Prime",
+            "plan_name": "Prime Annual Membership",
+            "amount": 1499.0,
+            "currency": "INR",
+            "billing_cycle": "Annual",
+            "next_billing_date": "2026-12-01",
+            "last_used_date": "2026-10-28",
+            "is_usage_active": True,
+            "revoke_endpoint": "https://www.amazon.in/mc/manage",
+            "payment_rail": "eNACH Mandate"
+        }
+
+class ThirdPartyAutopayAggregator:
+    def __init__(self):
+        self.connectors = {
+            "spotify": SpotifyConnector(),
+            "openai": OpenAIConnector(),
+            "amazon": AmazonConnector()
+        }
+
+    def aggregate_linked_accounts(self, linked_credentials):
+        active_subscriptions = []
         total_annual_leak = 0.0
+        idle_count = 0
 
-        for merchant, txs in grouped.items():
-            if len(txs) < 2:
-                continue
+        for cred in linked_credentials:
+            platform_key = cred["platform_key"]
+            if platform_key in self.connectors:
+                connector = self.connectors[platform_key]
+                meta = connector.fetch_subscription_metadata(cred["account_id"])
+                
+                cycle = meta["billing_cycle"]
+                cost = meta["amount"]
+                annual_impact = cost * 12 if cycle == "Monthly" else cost
+                
+                total_annual_leak += annual_impact
 
-            txs.sort(key=lambda x: x["date_obj"])
+                days_idle = (datetime.now() - datetime.strptime(meta["last_used_date"], "%Y-%m-%d")).days
+                is_idle = days_idle > 30
 
-            intervals = []
-            price_changes = []
-            for i in range(1, len(txs)):
-                delta_days = (txs[i]["date_obj"] - txs[i-1]["date_obj"]).days
-                intervals.append(delta_days)
-                price_diff = txs[i]["amount"] - txs[i-1]["amount"]
-                if price_diff > 0:
-                    price_changes.append({
-                        "date": txs[i]["date"],
-                        "old_amount": txs[i-1]["amount"],
-                        "new_amount": txs[i]["amount"],
-                        "increase_pct": round((price_diff / txs[i-1]["amount"]) * 100, 1)
-                    })
+                if is_idle:
+                    idle_count += 1
 
-            avg_interval = sum(intervals) / len(intervals) if intervals else 0
-            latest_tx = txs[-1]
-
-            if 25 <= avg_interval <= 35:
-                commitment_type = "Monthly Recurring"
-                annualized_cost = latest_tx["amount"] * 12
-            elif 350 <= avg_interval <= 380:
-                commitment_type = "Annual Auto-Renewal"
-                annualized_cost = latest_tx["amount"]
-            else:
-                commitment_type = "Irregular Interval"
-                annualized_cost = latest_tx["amount"] * (365 / max(avg_interval, 1))
-
-            total_annual_leak += annualized_cost
-
-            commitments.append({
-                "merchant": merchant,
-                "category": latest_tx["category"],
-                "rail_type": latest_tx["rail_type"],
-                "last_debit_date": latest_tx["date"],
-                "latest_amount": latest_tx["amount"],
-                "annualized_impact": round(annualized_cost, 2),
-                "frequency": commitment_type,
-                "has_price_hike": len(price_changes) > 0,
-                "price_hike_details": price_changes,
-                "cancellation_steps": latest_tx["cancellation_steps"]
-            })
+                active_subscriptions.append({
+                    "platform": meta["platform"],
+                    "plan": meta["plan_name"],
+                    "recurring_amount": cost,
+                    "cycle": cycle,
+                    "next_billing_date": meta["next_billing_date"],
+                    "annual_impact": round(annual_impact, 2),
+                    "days_idle": days_idle,
+                    "is_idle": is_idle,
+                    "payment_rail": meta["payment_rail"],
+                    "revoke_url": meta["revoke_endpoint"]
+                })
 
         return {
-            "total_annual_leak": round(total_annual_leak, 2),
-            "total_commitments_found": len(commitments),
-            "commitments": commitments
+            "linked_count": len(active_subscriptions),
+            "total_annual_commitment": round(total_annual_leak, 2),
+            "idle_waste_count": idle_count,
+            "subscriptions": active_subscriptions
         }
 
-SYNTHETIC_BANK_STATEMENT = [
-    {"date": "2025-10-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
-    {"date": "2025-11-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
-    {"date": "2025-12-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
-    {"date": "2026-01-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
-    {"date": "2026-02-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 799.0},
-    
-    {"date": "2025-11-01", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0},
-    {"date": "2026-10-30", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0},
-    
-    {"date": "2025-08-10", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
-    {"date": "2025-11-12", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
-    {"date": "2026-02-14", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
-    
-    {"date": "2026-01-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 420.0},
-    {"date": "2026-02-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 1280.0}
-]
+# =========================================================
+# 2. STREAMLIT WEB INTERFACE
+# =========================================================
 
-# --- STREAMLIT UI RENDER ---
-st.title("💳 Anulaksya — Recurring Debit Intelligence")
-st.caption("Unveiling forgotten auto-debits, silent price hikes, and cancellation pathways.")
+st.title("💳 Anulaksya — Third-Party Account Aggregator")
+st.caption("Direct platform governance across consumer services, AI tools, and subscriptions.")
 
-analyzer = RecurringPaymentAnalyzer(MERCHANT_KNOWLEDGE_BASE)
-report = analyzer.analyze_transactions(SYNTHETIC_BANK_STATEMENT)
+# Sidebar Connector Controls
+st.sidebar.header("🔗 Linked Accounts")
+connect_spotify = st.sidebar.checkbox("Spotify Premium", value=True)
+connect_openai = st.sidebar.checkbox("OpenAI / ChatGPT", value=True)
+connect_amazon = st.sidebar.checkbox("Amazon Prime", value=True)
 
-# Metrics Banner
+linked_creds = []
+if connect_spotify:
+    linked_creds.append({"platform_key": "spotify", "account_id": "usr_spot_9921"})
+if connect_openai:
+    linked_creds.append({"platform_key": "openai", "account_id": "usr_oai_8832"})
+if connect_amazon:
+    linked_creds.append({"platform_key": "amazon", "account_id": "usr_amzn_1102"})
+
+aggregator = ThirdPartyAutopayAggregator()
+report = aggregator.aggregate_linked_accounts(linked_creds)
+
+# Top Metrics Banner
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Annual Financial Leak", f"₹{report['total_annual_leak']:,.2f}")
-col2.metric("Detected Subscriptions", report['total_commitments_found'])
-hikes_count = sum(1 for c in report['commitments'] if c['has_price_hike'])
-col3.metric("Price Hikes Detected", hikes_count, delta=f"{hikes_count} Alert" if hikes_count else None, delta_color="inverse")
+col1.metric("Total Annual Commitment", f"₹{report['total_annual_commitment']:,.2f}")
+col2.metric("Connected Accounts", report['linked_count'])
+col3.metric("Unused / Idle Subscriptions", report['idle_waste_count'], delta="Action Needed" if report['idle_waste_count'] else None, delta_color="inverse")
 
 st.markdown("---")
-st.subheader("Active Mandates & Cancellation Guidance")
+st.subheader("Connected Platform Mandates & Inactivity Alerts")
 
-for item in report["commitments"]:
-    with st.expander(f"{item['merchant']} — ₹{item['latest_amount']} ({item['frequency']})"):
+if not report["subscriptions"]:
+    st.info("No accounts currently connected. Use the sidebar to link services.")
+
+for item in report["subscriptions"]:
+    with st.expander(f"{item['platform']} ({item['plan']}) — ₹{item['recurring_amount']} / {item['cycle']}"):
         c1, c2 = st.columns([2, 1])
         with c1:
-            st.write(f"**Category:** {item['category']}")
-            st.write(f"**Payment Rail:** {item['rail_type']}")
-            st.write(f"**Last Debited:** {item['last_debit_date']}")
-            st.write(f"**Annualized Cost:** ₹{item['annualized_impact']:,.2f}")
-            if item['has_price_hike']:
-                st.warning("⚠️ **Silent Price Hike Detected!**")
-                for hike in item['price_hike_details']:
-                    st.write(f"- Increased from ₹{hike['old_amount']} to ₹{hike['new_amount']} (+{hike['increase_pct']}%) on {hike['date']}")
+            st.write(f"**Billing Cycle:** {item['cycle']}")
+            st.write(f"**Next Billing Date:** {item['next_billing_date']}")
+            st.write(f"**Payment Rail:** {item['payment_rail']}")
+            st.write(f"**Annualized Financial Impact:** ₹{item['annual_impact']:,.2f}")
+            
+            if item['is_idle']:
+                st.error(f"⚠️ **Idle Financial Drain Alert:** No usage recorded in {item['days_idle']} days! Consider cancelling or pausing this plan.")
+            else:
+                st.success(f"✅ Active subscription (Used {item['days_idle']} days ago).")
+
         with c2:
-            st.markdown("### 🛑 Cancellation Steps")
-            for step in item['cancellation_steps']:
-                st.write(f"- {step}")
+            st.markdown("### ⚙️ Account Governance")
+            st.markdown(f"[🔗 Manage / Revoke Access directly on {item['platform']}]({item['revoke_url']})")
