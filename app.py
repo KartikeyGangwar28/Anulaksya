@@ -7,12 +7,8 @@ import pandas as pd
 import plotly.express as px
 from PIL import Image
 
-# =========================================================
-# 1. PAGE SETUP & FAVICON CONFIGURATION
-# =========================================================
-
 try:
-    logo_image = Image.open("assets/images/anulakshyalog.jpg")
+    logo_image = Image.open("assets/images/anulakshyalogo.jpg")
     page_icon_setting = logo_image
 except Exception:
     page_icon_setting = "💳"
@@ -24,9 +20,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# =========================================================
-# 2. REFERENCE KNOWLEDGE BASE & PATTERN MATCHING
-# =========================================================
 
 MERCHANT_KNOWLEDGE_BASE = [
     {
@@ -106,10 +99,6 @@ MERCHANT_KNOWLEDGE_BASE = [
         ]
     }
 ]
-
-# =========================================================
-# 3. RECURRING DEBIT REASONING ENGINE
-# =========================================================
 
 class RecurringPaymentAnalyzer:
     def __init__(self, knowledge_base):
@@ -242,40 +231,32 @@ class RecurringPaymentAnalyzer:
             "predictions": predictions
         }
 
-# =========================================================
-# 4. SYNTHETIC BANK STATEMENT DATASET
-# =========================================================
-
 DEFAULT_STATEMENT = [
     {"date": "2025-10-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2025-11-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2025-12-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2026-01-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
-    {"date": "2026-02-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 799.0}, # Silent Hike
+    {"date": "2026-02-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 799.0}, 
     
     {"date": "2025-11-01", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0},
-    {"date": "2026-10-30", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0}, # Annual
+    {"date": "2026-10-30", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0}, 
     
     {"date": "2025-08-10", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
     {"date": "2025-11-12", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
-    {"date": "2026-02-14", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0}, # Irregular
+    {"date": "2026-02-14", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0}, 
     
     {"date": "2026-01-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 420.0},
     {"date": "2026-02-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 1280.0},
     
     {"date": "2026-02-01", "descriptor": "OPENAI*CHATGPT SUBSCRIPTION", "amount": 1.0},
-    {"date": "2026-03-01", "descriptor": "OPENAI*CHATGPT SUBSCRIPTION", "amount": 1650.0} # Trial converted
+    {"date": "2026-03-01", "descriptor": "OPENAI*CHATGPT SUBSCRIPTION", "amount": 1650.0} 
 ]
 
-# =========================================================
-# 5. STREAMLIT APPLICATION INTERFACE
-# =========================================================
 
-# Session state initialization for revocation simulation
+
 if "revoked_mandates" not in st.session_state:
     st.session_state.revoked_mandates = set()
 
-# Header Layout
 head_col1, head_col2 = st.columns([1, 5])
 with head_col1:
     if logo_image:
@@ -286,7 +267,7 @@ with head_col2:
     st.title("Anulaksya — Recurring Debit & Mandate Intelligence")
     st.caption("Intelligence layer above payment rails: Uncovering hidden mandates, silent price hikes, and automatic forecast clocks.")
 
-# Sidebar Configuration
+
 st.sidebar.header("⚙️ Data Source & Controls")
 data_source = st.sidebar.radio("Select Input Mode", ["Synthetic Demo History", "Upload Statement (JSON)"])
 
@@ -314,7 +295,6 @@ active_commitments = [
 ]
 recalculated_annual_leak = sum(c["annualized_impact"] for c in active_commitments)
 
-# --- TOP METRICS BANNER ---
 st.markdown("---")
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Total Annual Financial Leak", f"₹{recalculated_annual_leak:,.2f}")
@@ -326,7 +306,6 @@ m3.metric("Silent Price Hikes Detected", hikes_count, delta=f"{hikes_count} Aler
 trial_count = sum(1 for c in active_commitments if c["is_trial_conversion"])
 m4.metric("Trial Conversions", trial_count, delta=f"{trial_count} Converted" if trial_count else None, delta_color="inverse")
 
-# --- TAB NAVIGATION ---
 tab1, tab2, tab3, tab4 = st.tabs([
     "🔍 Active Mandates & Revocation", 
     "📅 Renewal Forecast Calendar", 
@@ -334,7 +313,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "📄 Dispute & Audit Export"
 ])
 
-# --- TAB 1: ACTIVE MANDATES & REVOCATION ---
 with tab1:
     st.subheader("Detected Recurring Commitments")
     st.caption("Review each detected mandate, inspect silent price hikes, and execute 1-Click revocation.")
@@ -385,7 +363,6 @@ with tab2:
     else:
         st.info("No future renewal predictions available.")
 
-# --- TAB 3: CATEGORY ANALYTICS ---
 with tab3:
     st.subheader("📊 Spend Breakdown by Category & Payment Rail")
     if active_commitments:
@@ -413,7 +390,6 @@ with tab3:
             )
             st.plotly_chart(fig_rail, use_container_width=True)
 
-# --- TAB 4: DISPUTE & AUDIT EXPORT ---
 with tab4:
     st.subheader("📄 Export Financial Leakage Audit Report")
     st.caption("Download structured CSV records to dispute unauthorized debits or file mandate cancellations with your bank.")
