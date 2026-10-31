@@ -7,10 +7,6 @@ import pandas as pd
 import plotly.express as px
 from PIL import Image
 
-# =========================================================
-# 1. PAGE SETUP & FAVICON CONFIGURATION
-# =========================================================
-
 try:
     logo_image = Image.open("assets/images/anulakshyalog.jpg")
     page_icon_setting = logo_image
@@ -23,11 +19,6 @@ st.set_page_config(
     page_icon=page_icon_setting,
     layout="wide"
 )
-
-# =========================================================
-# 2. REFERENCE KNOWLEDGE BASE & PATTERN MATCHING
-# =========================================================
-
 MERCHANT_KNOWLEDGE_BASE = [
     {
         "pattern": r"(?i)(AMZN|AMAZON|PRIME\s*MEMBER)",
@@ -255,9 +246,6 @@ class RecurringPaymentAnalyzer:
             "predictions": predictions
         }
 
-# =========================================================
-# 4. SYNTHETIC BANK STATEMENT DATASET
-# =========================================================
 
 DEFAULT_STATEMENT = [
     {"date": "2025-10-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
@@ -280,14 +268,10 @@ DEFAULT_STATEMENT = [
     {"date": "2026-03-01", "descriptor": "OPENAI*CHATGPT SUBSCRIPTION", "amount": 1650.0}
 ]
 
-# =========================================================
-# 5. STREAMLIT APPLICATION INTERFACE
-# =========================================================
 
 if "revoked_mandates" not in st.session_state:
     st.session_state.revoked_mandates = set()
 
-# Header Layout
 head_col1, head_col2 = st.columns([1, 5])
 with head_col1:
     if logo_image:
@@ -298,7 +282,6 @@ with head_col2:
     st.title("Anulaksya — Recurring Debit & Mandate Intelligence")
     st.caption("Intelligence layer above payment rails: Uncovering hidden mandates, silent price hikes, and automatic forecast clocks.")
 
-# Sidebar Controls
 st.sidebar.header("⚙️ Data Source & Controls")
 data_source = st.sidebar.radio("Select Input Mode", ["Synthetic Demo History", "Upload Statement (JSON)"])
 
@@ -316,17 +299,14 @@ if data_source == "Upload Statement (JSON)":
 else:
     transactions = DEFAULT_STATEMENT
 
-# Run Engine
 analyzer = RecurringPaymentAnalyzer(MERCHANT_KNOWLEDGE_BASE)
 report = analyzer.analyze_transactions(transactions)
 
-# Filter revoked
 active_commitments = [
     c for c in report["commitments"] if c["merchant"] not in st.session_state.revoked_mandates
 ]
 recalculated_annual_leak = sum(c["annualized_impact"] for c in active_commitments)
 
-# TOP METRICS BANNER
 st.markdown("---")
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("Total Annual Leak", f"₹{recalculated_annual_leak:,.2f}")
@@ -339,7 +319,6 @@ m4.metric("Price Hikes", hikes_count, delta=f"{hikes_count} Alert(s)" if hikes_c
 trial_count = sum(1 for c in active_commitments if c["is_trial_conversion"])
 m5.metric("Trial Traps", trial_count, delta=f"{trial_count} Traps" if trial_count else None, delta_color="inverse")
 
-# TAB NAVIGATION
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Active Mandates & Revocation", 
     "📅 Renewal Forecast Calendar", 
