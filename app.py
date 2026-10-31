@@ -98,10 +98,6 @@ MERCHANT_KNOWLEDGE_BASE = [
     }
 ]
 
-# =========================================================
-# 3. RECURRING DEBIT REASONING ENGINE
-# =========================================================
-
 class RecurringPaymentAnalyzer:
     def __init__(self, knowledge_base):
         self.kb = knowledge_base
