@@ -7,19 +7,26 @@ import pandas as pd
 import plotly.express as px
 from PIL import Image
 
+# =========================================================
+# 1. PAGE SETUP & FAVICON CONFIGURATION
+# =========================================================
+
 try:
-    logo_image = Image.open("assets/images/anulakshyalogo.jpg")
+    logo_image = Image.open("assets/images/anulakshyalog.jpg")
     page_icon_setting = logo_image
 except Exception:
     page_icon_setting = "💳"
     logo_image = None
 
 st.set_page_config(
-    page_title="Anulaksya — Recurring Debit & Mandate Intelligence",
+    page_title="Anulaksya — Mandate Intelligence & AutoPay Governance",
     page_icon=page_icon_setting,
     layout="wide"
 )
 
+# =========================================================
+# 2. REFERENCE KNOWLEDGE BASE & PATTERN MATCHING
+# =========================================================
 
 MERCHANT_KNOWLEDGE_BASE = [
     {
@@ -100,6 +107,10 @@ MERCHANT_KNOWLEDGE_BASE = [
     }
 ]
 
+# =========================================================
+# 3. RECURRING DEBIT REASONING ENGINE
+# =========================================================
+
 class RecurringPaymentAnalyzer:
     def __init__(self, knowledge_base):
         self.kb = knowledge_base
@@ -124,6 +135,18 @@ class RecurringPaymentAnalyzer:
             ]
         }
 
+    def calculate_mandate_health_score(self, commitments):
+        """Calculates a Mandate Health Index (MHI) from 0 to 100."""
+        score = 100
+        for item in commitments:
+            if item["has_price_hike"]:
+                score -= 15
+            if item["is_trial_conversion"]:
+                score -= 20
+            if item["frequency"] == "Annual Auto-Renewal":
+                score -= 10
+        return max(score, 10)
+
     def analyze_transactions(self, raw_transactions):
         grouped = defaultdict(list)
         for tx in raw_transactions:
@@ -138,7 +161,6 @@ class RecurringPaymentAnalyzer:
 
         for merchant, txs in grouped.items():
             if len(txs) < 2:
-                # Flag potential trial conversion single debit
                 if len(txs) == 1 and txs[0]["amount"] > 0:
                     latest = txs[0]
                     commitments.append({
@@ -178,7 +200,6 @@ class RecurringPaymentAnalyzer:
             latest_tx = txs[-1]
             earliest_tx = txs[0]
 
-            # Classification
             if 25 <= avg_interval <= 35:
                 commitment_type = "Monthly Recurring"
                 annualized_cost = latest_tx["amount"] * 12
@@ -224,39 +245,49 @@ class RecurringPaymentAnalyzer:
                 "Rail": latest_tx["rail_type"]
             })
 
+        health_score = self.calculate_mandate_health_score(commitments)
+
         return {
             "total_annual_leak": round(total_annual_leak, 2),
             "total_commitments_found": len(commitments),
+            "health_score": health_score,
             "commitments": commitments,
             "predictions": predictions
         }
+
+# =========================================================
+# 4. SYNTHETIC BANK STATEMENT DATASET
+# =========================================================
 
 DEFAULT_STATEMENT = [
     {"date": "2025-10-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2025-11-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2025-12-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
     {"date": "2026-01-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 649.0},
-    {"date": "2026-02-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 799.0}, 
+    {"date": "2026-02-15", "descriptor": "UPI/NFLX*NETFLIX/983724/P2M", "amount": 799.0},
     
     {"date": "2025-11-01", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0},
-    {"date": "2026-10-30", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0}, 
+    {"date": "2026-10-30", "descriptor": "INB*AMZN PRIME*MEMBERSHIP", "amount": 1499.0},
     
     {"date": "2025-08-10", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
     {"date": "2025-11-12", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
-    {"date": "2026-02-14", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0}, 
+    {"date": "2026-02-14", "descriptor": "POS/RAZORPAY*CULTFIT/BANGALORE", "amount": 1500.0},
     
     {"date": "2026-01-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 420.0},
     {"date": "2026-02-05", "descriptor": "AWS*CLOUD SERVICES SEATTLE", "amount": 1280.0},
     
     {"date": "2026-02-01", "descriptor": "OPENAI*CHATGPT SUBSCRIPTION", "amount": 1.0},
-    {"date": "2026-03-01", "descriptor": "OPENAI*CHATGPT SUBSCRIPTION", "amount": 1650.0} 
+    {"date": "2026-03-01", "descriptor": "OPENAI*CHATGPT SUBSCRIPTION", "amount": 1650.0}
 ]
 
-
+# =========================================================
+# 5. STREAMLIT APPLICATION INTERFACE
+# =========================================================
 
 if "revoked_mandates" not in st.session_state:
     st.session_state.revoked_mandates = set()
 
+# Header Layout
 head_col1, head_col2 = st.columns([1, 5])
 with head_col1:
     if logo_image:
@@ -267,7 +298,7 @@ with head_col2:
     st.title("Anulaksya — Recurring Debit & Mandate Intelligence")
     st.caption("Intelligence layer above payment rails: Uncovering hidden mandates, silent price hikes, and automatic forecast clocks.")
 
-
+# Sidebar Controls
 st.sidebar.header("⚙️ Data Source & Controls")
 data_source = st.sidebar.radio("Select Input Mode", ["Synthetic Demo History", "Upload Statement (JSON)"])
 
@@ -289,33 +320,37 @@ else:
 analyzer = RecurringPaymentAnalyzer(MERCHANT_KNOWLEDGE_BASE)
 report = analyzer.analyze_transactions(transactions)
 
-# Filter out revoked mandates
+# Filter revoked
 active_commitments = [
     c for c in report["commitments"] if c["merchant"] not in st.session_state.revoked_mandates
 ]
 recalculated_annual_leak = sum(c["annualized_impact"] for c in active_commitments)
 
+# TOP METRICS BANNER
 st.markdown("---")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Total Annual Financial Leak", f"₹{recalculated_annual_leak:,.2f}")
+m1, m2, m3, m4, m5 = st.columns(5)
+m1.metric("Total Annual Leak", f"₹{recalculated_annual_leak:,.2f}")
 m2.metric("Active Mandates", len(active_commitments))
+m3.metric("Mandate Health Score", f"{report['health_score']}/100", delta="Risk Warning" if report['health_score'] < 70 else "Healthy")
 
 hikes_count = sum(1 for c in active_commitments if c["has_price_hike"])
-m3.metric("Silent Price Hikes Detected", hikes_count, delta=f"{hikes_count} Alert(s)" if hikes_count else None, delta_color="inverse")
+m4.metric("Price Hikes", hikes_count, delta=f"{hikes_count} Alert(s)" if hikes_count else None, delta_color="inverse")
 
 trial_count = sum(1 for c in active_commitments if c["is_trial_conversion"])
-m4.metric("Trial Conversions", trial_count, delta=f"{trial_count} Converted" if trial_count else None, delta_color="inverse")
+m5.metric("Trial Traps", trial_count, delta=f"{trial_count} Traps" if trial_count else None, delta_color="inverse")
 
-tab1, tab2, tab3, tab4 = st.tabs([
+# TAB NAVIGATION
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Active Mandates & Revocation", 
     "📅 Renewal Forecast Calendar", 
+    "🛡️ Mandate Health Index (MHI)",
     "📊 Financial Category Analytics", 
     "📄 Dispute & Audit Export"
 ])
 
 with tab1:
     st.subheader("Detected Recurring Commitments")
-    st.caption("Review each detected mandate, inspect silent price hikes, and execute 1-Click revocation.")
+    st.caption("Review detected mandates, inspect silent price hikes, and execute 1-Click revocation.")
 
     if not active_commitments:
         st.success("🎉 All mandates have been successfully revoked or managed!")
@@ -337,7 +372,7 @@ with tab1:
                         st.write(f"- Amount increased from **₹{hike['old_amount']}** to **₹{hike['new_amount']}** (+{hike['increase_pct']}%) on {hike['date']}")
 
                 if item["is_trial_conversion"]:
-                    st.error("🚨 **Trial Conversion Detected!** This subscription converted from a free/low-cost trial to a full paid plan.")
+                    st.error("🚨 **Trial Conversion Detected!** Converted from free/low-cost trial to full paid plan.")
 
             with col_b:
                 st.markdown("### 🛑 Cancellation Pathway")
@@ -350,20 +385,38 @@ with tab1:
                     st.success(f"Revocation request dispatched for {merchant_name}!")
                     st.rerun()
 
-# --- TAB 2: RENEWAL FORECAST CALENDAR ---
 with tab2:
     st.subheader("📅 30/60/90 Day Renewal Forecast")
     st.caption("Predictive clock estimating when payments will be auto-debited across payment rails.")
     
     if report["predictions"]:
         df_pred = pd.DataFrame(report["predictions"])
-        # Filter revoked items
         df_pred = df_pred[~df_pred["Merchant"].isin(st.session_state.revoked_mandates)]
         st.dataframe(df_pred, use_container_width=True)
     else:
         st.info("No future renewal predictions available.")
 
 with tab3:
+    st.subheader("🛡️ Mandate Health Index (MHI) Diagnosis")
+    st.caption("Automated risk scoring evaluating your portfolio against price hikes and silent auto-renewals.")
+    
+    col_score, col_diag = st.columns([1, 2])
+    with col_score:
+        st.metric("Overall Mandate Score", f"{report['health_score']} / 100")
+        if report['health_score'] >= 80:
+            st.success("Status: Low Financial Exposure Risk")
+        elif report['health_score'] >= 50:
+            st.warning("Status: Moderate Exposure to Price Escalations")
+        else:
+            st.error("Status: Severe Unmonitored Leakage")
+            
+    with col_diag:
+        st.write("### Risk Drivers Identified:")
+        st.write(f"- **Unnoticed Price Escalations:** {hikes_count} active merchant(s) increased fees.")
+        st.write(f"- **Free Trial Traps:** {trial_count} subscription(s) auto-converted to full pricing.")
+        st.write("- **Annual Auto-Renewals:** Mandates debiting >300 days apart require pre-debit approval locks.")
+
+with tab4:
     st.subheader("📊 Spend Breakdown by Category & Payment Rail")
     if active_commitments:
         df_commitments = pd.DataFrame(active_commitments)
@@ -390,7 +443,7 @@ with tab3:
             )
             st.plotly_chart(fig_rail, use_container_width=True)
 
-with tab4:
+with tab5:
     st.subheader("📄 Export Financial Leakage Audit Report")
     st.caption("Download structured CSV records to dispute unauthorized debits or file mandate cancellations with your bank.")
 
